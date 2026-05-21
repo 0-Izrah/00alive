@@ -24,6 +24,7 @@
         "npm:eslint@^10.3.0",
         "npm:fast-average-color@^9.5.2",
         "npm:globals@^17.6.0",
+        "npm:groq-sdk@^1.2.0",
         "npm:postcss@^8.5.14",
         "npm:react-activity-calendar@^3.2.0",
         "npm:react-dom@^19.2.6",

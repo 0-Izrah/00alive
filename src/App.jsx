@@ -5,9 +5,8 @@ import { StatusBadge } from './components/StatusBadge';
 import { TrackCard } from './components/TrackCard';
 import { RecentTracks } from './components/RecentTracks';
 import { PingModal } from './components/PingModal';
-import { HistoricalCalendar } from './components/HistoricalCalendar';
 import { ArtistLoyalty } from './components/ArtistLoyalty';
-import { ListeningClock } from './components/ListeningClock';
+import { VibeCheck } from './components/VibeCheck';
 
 export default function App() {
   const [statusData, setStatusData] = useState(null);
@@ -125,14 +124,17 @@ export default function App() {
       />
       
       <div className="w-full max-w-sm px-5 flex flex-col z-10">
-        {/* EKG at the very top */}
-        <div className="mb-10 opacity-70 drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
-          <EKG
-            bpm={statusData?.bpm || 80}
-            status={statusData?.tier || 'ALIVE'}
-            color={ekgColor}
-          />
-        </div>
+
+      {/* EKG at the very top */}
+      <div className="mb-8 opacity-60">
+        <EKG
+          bpm={statusData?.bpm || 80}
+          energy={statusData?.energy || 0.5}
+          valence={statusData?.valence || 0.5}
+          status={statusData?.tier || 'ALIVE'}
+          color={ekgColor}
+        />
+      </div>
 
         {/* The question */}
         <div className="mb-8">
@@ -193,27 +195,30 @@ export default function App() {
           <TrackCard track={statusData?.track} isLoading={loading} ekgColor={activeEkgColor}/>
         </div>
 
-        {/* Analytics Grid: Artist Loyalty & Listening Clock */}
-        <div className="flex flex-col gap-4 mb-6">
-          <ArtistLoyalty topArtists={statusData?.loyalty} />
-          <ListeningClock hourData={statusData?.clock} />
+        <div className="mb-7">
+          <VibeCheck 
+            track={statusData?.track} 
+            comment={comment || statusData?.message} 
+            commentLoading={commentLoading} 
+          />
         </div>
 
-        {/* Historical Calendar replacing Streak */}
         <div className="mb-10">
-          <HistoricalCalendar />
+          <ArtistLoyalty 
+            topArtists={statusData?.loyalty} 
+            isLoading={loading} 
+          />
         </div>
+
+
+
 
         {/* Recently played mini-list */}
         <div className="mb-4">
-          <RecentTracks tracks={statusData?.recentTracks} isLoading={loading} />
-        </div>
-
-        {/* Global Visitor Count */}
-        <div className="mt-12 text-center border-t border-border/30 pt-8 pb-4">
-          <p className="text-[10px] font-mono tracking-[0.2em] uppercase text-muted">
-            <span className="text-alive font-bold">{visitorCount}</span> people have checked if Izrah is alive today.
-          </p>
+          <RecentTracks 
+            tracks={statusData?.recentTracks} 
+            isLoading={loading} 
+          />
         </div>
 
       </div>

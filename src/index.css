@@ -117,3 +117,8 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+@keyframes ekgWander {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(1.5px); }
+}
