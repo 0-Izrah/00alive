@@ -1,16 +1,25 @@
-# React + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+# izrah.live 🫀
 
-Currently, two official plugins are available:
+> One page. One question. *Is Izrah still alive?*
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+A deceptively simple, zero-maintenance status site that answers the ultimate question by passively reading my Spotify listening activity. Visitors see a deadpan personality; engineers see a serverless architecture stitching together multiple APIs.
 
-## React Compiler
+## ⚡ How it Works
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The site runs entirely on autopilot. There is no manual "status updating."
+1. **The Signal:** Netlify Serverless Functions ping the Spotify Web API to check if I am currently listening to a track, or when I last listened to one.
+2. **The Vitals:** The Spotify Audio Features API extracts the track's BPM (Tempo), Energy, and Valence (Mood).
+3. **The Pulse:** A custom SVG EKG line dynamically animates its pulse rate to match the exact BPM of the current track. If I've been offline too long, it flatlines.
+4. **The Commentary:** The track metadata is fed to **Claude 3.5 Sonnet** (Anthropic API) via a rigid system prompt to generate a single, deadpan, context-aware one-liner about my current state.
+5. **The Streak:** A scheduled Netlify Cron job runs at midnight (WAT) to update my consecutive days of listening activity stored in a single-row Supabase PostgreSQL database.
 
-## Expanding the ESLint configuration
+## 🛠️ Tech Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+* **Frontend:** React (Vite), Tailwind CSS, Framer Motion (optional/animations)
+* **Backend:** Netlify Functions (Node.js)
+* **Database:** Supabase (PostgreSQL)
+* **Integrations:** Spotify Web API
+
+
+Built to avoid answering "how are you?" texts.
