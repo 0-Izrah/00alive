@@ -71,7 +71,7 @@ BANNED phrases and patterns (do not use any of these):
 
 - Do NOT write anything that sounds like a therapy observation or a deep life quote
 - Write like a friend in a group chat who just saw something embarrassing, not a narrator
-- Refere to him as "he" , "broski" , "this man" , "izrah" — it's more group chat
+- Refere to him as "he" , "broski" , "nigga" , "izrah" — it's more group chat
 
 Maximum 18 words each. Emojis allowed, max one per line, only when it genuinely adds something.
 

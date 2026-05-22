@@ -1,222 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
-//token refresh
-async function getSpotifyAccessToken() {
-    const credentials = Buffer.from(
-        `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
-    ).toString("base64");
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-        method: "POST",
-        headers: {
-            Authorization: `Basic ${credentials}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: process.env.SPOTIFY_REFRESH_TOKEN,
-        }),
-    });
-    const data = await res.json();
-    return data.access_token;
-}
-
-//data fetch
-async function getCurrentlyPlaying(token) {
-    const res = await fetch(
-        "https://api.spotify.com/v1/me/player/currently-playing",
-        {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        },
-    );
-    if (res.status === 204 || res.status === 400) return null;
-    const data = await res.json();
-    if (!data || !data.item || data.item.type !== "track") return null;
-    return {
-        isPlaying: data.is_playing,
-        track: data.item.name,
-        artist: data.item.artists.map((a) => a.name).join(", "),
-        album: data.item.album.name,
-        albumArt:
-            data.item.album.images[1]?.url || data.item.album.images[0].url,
-        trackId: data.item.id,
-        playedAt: new Date().toISOString(),
-        progressMs: data.progress_ms,
-        durationMs: data.item.duration_ms,
-        url: data.item.external_urls?.spotify,
-    };
-}
-
-async function getRecentlyPlayed(token, limit = 1) {
-    // 1. FIXED: Using the explicit Spotify API URL with the correct ${limit} syntax
-    const res = await fetch(
-        `https://api.spotify.com/v1/me/player/recently-played?limit=${limit}`,
-        {
-            headers: { Authorization: `Bearer ${token}` },
-        },
-    );
-
-    // Failsafe: if Spotify gets mad at the request, gracefully return empty data
-    if (!res.ok) return limit === 1 ? null : [];
-    
-    const data = await res.json();
-    if (!data.items || data.items.length === 0) return limit === 1 ? null : [];
-
-    if (limit === 1) {
-        const item = data.items[0];
-        return {
-            isPlaying: false,
-            track: item.track.name,
-            artist: item.track.artists.map((a) => a.name).join(", "),
-            album: item.track.album.name,
-            albumArt:
-                item.track.album.images[1]?.url ||
-                item.track.album.images[0]?.url,
-            trackId: item.track.id,
-            playedAt: item.played_at,
-            progressMs: null,
-            durationMs: item.track.duration_ms,
-            url: item.track.external_urls?.spotify,
-        };
-    }
-
-    // For limit > 1, return an array of simplified track objects
-    return data.items.map((item) => ({
-        trackId: item.track.id, // 2. ADDED: Now your React key={`...`} will map perfectly!
-        track: item.track.name,
-        artist: item.track.artists.map((a) => a.name).join(", "),
-        albumArt:
-            item.track.album.images[2]?.url || item.track.album.images[0]?.url, // smaller image
-        playedAt: item.played_at,
-        url: item.track.external_urls?.spotify,
-    }));
-}
-
-async function getTopArtists(token) {
-    const res = await fetch(
-        "https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=5",
-        {
-            headers: { Authorization: `Bearer ${token}` },
-        },
-    );
-
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    // 1. Failsafe: Ensure data.items actually exists and is an array
-    if (!data || !data.items || !Array.isArray(data.items)) return [];
-
-    return data.items.map((artist, index) => ({
-        name: artist.name,
-        
-        // 2. Failsafe: Use ?. to safely check for genres before reading [0]
-        genre: artist.genres?.[0] || "artist",
-        
-        // 3. Failsafe: Use ?. to safely check for images before reading [2] or [0]
-        image: artist.images?.[2]?.url || artist.images?.[0]?.url || "",
-        
-        affinity: 100 - index * 15,
-    }));
-}
-
-async function getAudioFeatures(token, trackId) {
-    const res = await fetch(
-        `https://api.spotify.com/v1/audio-features/$${trackId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-    );
-
-    const data = await res.json();
-    return {
-        bpm: Math.round(data.tempo) || 80,
-        energy: data.energy || 0.5, // 0.0 to 1.0
-        valence: data.valence || 0.5, // 0.0 (sad) to 1.0 (happy)
-        danceability: data.danceability || 0.5,
-    };
-}
-
-async function getListeningStats(token) {
-    try {
-        const res = await fetch(
-            "https://api.spotify.com/v1/me/player/recently-played?limit=50",
-            {
-                headers: { Authorization: `Bearer ${token}` },
-            },
-        );
-        if (!res.ok) return { topGenre: null, topArtists: [], clockData: [] };
-        const data = await res.json();
-
-        if (!data.items || data.items.length === 0)
-            return { topGenre: null, topArtists: [], clockData: [] };
-
-        const artistCounts = {};
-        const hourCounts = Array.from({ length: 24 }, (_, i) => ({
-            hour: i,
-            count: 0,
-        }));
-
-        for (const item of data.items) {
-            for (const a of item.track.artists) {
-                artistCounts[a.name] = (artistCounts[a.name] || 0) + 1;
-            }
-            const playedAt = new Date(item.played_at);
-            const hour = playedAt.getHours();
-            hourCounts[hour].count += 1;
-        }
-
-        const topArtists = Object.entries(artistCounts)
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5);
-
-        // Extract up to 50 unique artist IDs
-        const artistIds = [
-            ...new Set(
-                data.items.flatMap((item) =>
-                    item.track.artists.map((a) => a.id),
-                ),
-            ),
-        ]
-            .filter(Boolean)
-            .slice(0, 50);
-
-        let topGenre = null;
-        if (artistIds.length > 0) {
-            const artistRes = await fetch(
-                `https://api.spotify.com/v1/artists?ids=$${artistIds.join(",")}`,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                },
-            );
-            if (artistRes.ok) {
-                const artistData = await artistRes.json();
-                const genreCounts = {};
-                for (const artist of artistData.artists) {
-                    if (!artist || !artist.genres) continue;
-                    for (const genre of artist.genres) {
-                        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
-                    }
-                }
-
-                let maxCount = 0;
-                for (const [genre, count] of Object.entries(genreCounts)) {
-                    if (count > maxCount) {
-                        maxCount = count;
-                        topGenre = genre;
-                    }
-                }
-            }
-        }
-
-        return { topGenre, topArtists, clockData: hourCounts };
-    } catch {
-        return { topGenre: null, topArtists: [], clockData: [] };
-    }
-}
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
 function generateVibe(energy, valence, playedAt) {
     const hour = new Date(playedAt).getHours();
-
     let timePhrase = "day";
     if (hour >= 5 && hour < 12) timePhrase = "morning";
     else if (hour >= 12 && hour < 17) timePhrase = "mid-day";
@@ -228,11 +15,9 @@ function generateVibe(energy, valence, playedAt) {
     if (energy <= 0.4 && valence <= 0.4) return `${timePhrase} melancholy`;
     if (energy <= 0.5 && valence > 0.5) return `breezy ${timePhrase}`;
     if (energy > 0.5 && valence < 0.3) return `grind mode ${timePhrase}`;
-
     return `steady ${timePhrase} flow`;
 }
 
-//status tier calc
 function calculateTier(playedAt, isPlaying) {
     if (isPlaying) {
         return {
@@ -246,14 +31,8 @@ function calculateTier(playedAt, isPlaying) {
     const minutesAgo = (Date.now() - new Date(playedAt)) / (1000 * 60);
 
     if (minutesAgo < 120) {
-        return {
-            tier: "ALIVE",
-            label: "alive",
-            color: "alive",
-            message: null, // witty comment fills this
-        };
+        return { tier: "ALIVE", label: "alive", color: "alive", message: null };
     }
-
     if (minutesAgo < 480) {
         return {
             tier: "QUIET",
@@ -262,8 +41,7 @@ function calculateTier(playedAt, isPlaying) {
             message: "around, just off the aux for a bit.",
         };
     }
-
-    if (minutesAgo < 1440) {
+    if (minutesAgo < 900) {
         return {
             tier: "STILL HERE",
             label: "still here",
@@ -271,16 +49,14 @@ function calculateTier(playedAt, isPlaying) {
             message: "no music today. suspicious, but not alarming.",
         };
     }
-
-    if (minutesAgo < 2880) {
+    if (minutesAgo < 1440) {
         return {
             tier: "UNKNOWN",
             label: "unknown",
             color: "warn",
-            message: "going on 24 hours with no music. someone check on him.",
+            message: "going on 15+ hours with no music. someone check on him.",
         };
     }
-
     return {
         tier: "CHECK ON HIM",
         label: "missing",
@@ -289,128 +65,103 @@ function calculateTier(playedAt, isPlaying) {
     };
 }
 
-export default async (req) => {
+const CORS = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+};
+
+export default async () => {
     try {
-        const token = await getSpotifyAccessToken();
-
-        let trackData = await getCurrentlyPlaying(token);
-        if (!trackData) {
-            trackData = await getRecentlyPlayed(token);
-        }
-
-        if (!trackData) {
-            return new Response(
-                JSON.stringify({
-                    tier: "CHECK ON HIM",
-                    label: "missing",
-                    color: "dead",
-                    message:
-                        "no spotify activity found. this is deeply concerning.",
-                    track: null,
-                    streak: null,
-                    bpm: 60,
-                    energy: 0,
-                }),
-                {
-                    status: 200,
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Access-Control-Allow-Origin": "*",
-                    },
-                },
-            );
-        }
-
-        // Initialize Supabase once here
         const supabase = createClient(
             process.env.SUPABASE_URL,
             process.env.SUPABASE_SERVICE_KEY,
         );
 
-        // Get date exactly 30 days ago for the calendar query
-        const todayDate = new Date();
-        const thirtyDaysAgo = new Date(todayDate.setDate(todayDate.getDate() - 30)).toISOString().split('T')[0];
+        const thirtyDaysAgo = new Date(
+            new Date().setDate(new Date().getDate() - 30),
+        ).toISOString().split("T")[0];
 
-        // Massively expanded Promise.all to fetch EVERYTHING concurrently
-        const [
-            audioFeatures,
-            supabaseStreakData,
-            recentTracks,
-            listeningStats,
-            realTopArtists,
-            calendarData
-        ] = await Promise.all([
-            getAudioFeatures(token, trackData.trackId),
+        const [snapshotRes, streakRes, calendarRes] = await Promise.all([
+            supabase.from("spotify_snapshot").select("*").eq("id", 1).single(),
             supabase.from("streaks").select("*").eq("id", 1).single(),
-            getRecentlyPlayed(token, 5), // Fetch the 5 most recent tracks
-            getListeningStats(token), // Still useful for the topGenre
-            getTopArtists(token), // REAL top artists from Spotify API
-            supabase.from('listening_calendar').select('*').gte('date', thirtyDaysAgo).order('date', { ascending: false }) // Historical Grid Data
+            supabase.from("listening_calendar").select("*").gte("date", thirtyDaysAgo).order("date", { ascending: false }),
         ]);
 
-        const status = calculateTier(trackData.playedAt, trackData.isPlaying);
-        const vibe = generateVibe(
-            audioFeatures.energy,
-            audioFeatures.valence,
-            trackData.playedAt,
-        );
+        const snapshot = snapshotRes.data;
+
+        if (!snapshot || !snapshot.track) {
+            return new Response(
+                JSON.stringify({
+                    tier: "ALIVE",
+                    label: "loading",
+                    color: "alive",
+                    message: "syncing data, check back in a moment.",
+                    track: null,
+                    streak: streakRes.data || { current_streak: 0, best_streak: 0, total_days: 0 },
+                    bpm: 80,
+                    energy: 0.5,
+                    valence: 0.5,
+                    danceability: 0.5,
+                    recentTracks: [],
+                    loyalty: [],
+                    topGenre: null,
+                    clock: [],
+                    calendar: calendarRes.data || [],
+                    vibe: null,
+                }),
+                { status: 200, headers: CORS },
+            );
+        }
+
+        const track          = snapshot.track;
+        const audioFeatures  = snapshot.audio_features  || { bpm: 80, energy: 0.5, valence: 0.5, danceability: 0.5 };
+        const recentTracks   = snapshot.recent_tracks   || [];
+        const topArtists     = snapshot.top_artists     || [];
+        const listeningStats = snapshot.listening_stats || { topGenre: null, topArtists: [], clockData: [] };
+
+        const status = calculateTier(track.playedAt, track.isPlaying);
+        const vibe   = generateVibe(audioFeatures.energy, audioFeatures.valence, track.playedAt);
 
         return new Response(
             JSON.stringify({
                 ...status,
                 track: {
-                    id: trackData.trackId,
-                    name: trackData.track,
-                    artist: trackData.artist,
-                    album: trackData.album,
-                    albumArt: trackData.albumArt,
-                    playedAt: trackData.playedAt,
-                    isPlaying: trackData.isPlaying,
-                    progressMs: trackData.progressMs,
-                    durationMs: trackData.durationMs,
-                    url: trackData.url,
+                    id:         track.trackId,
+                    name:       track.track,
+                    artist:     track.artist,
+                    album:      track.album,
+                    albumArt:   track.albumArt,
+                    playedAt:   track.playedAt,
+                    isPlaying:  track.isPlaying,
+                    progressMs: track.progressMs,
+                    durationMs: track.durationMs,
+                    url:        track.url,
                 },
-                recentTracks: recentTracks || [],
-                topGenre: listeningStats.topGenre || "unknown",
-                
-                // Uses the real API data. If it fails, falls back to the manual extraction.
-                loyalty: realTopArtists || listeningStats.topArtists || [], 
-                
-                clock: listeningStats.clockData || [],
-                
-                // Pass the calendar array directly to the frontend
-                calendar: calendarData?.data || [], 
-
-                vibe: vibe,
-                streak: supabaseStreakData.data || {
+                recentTracks,
+                topGenre:    listeningStats.topGenre || "unknown",
+                loyalty:     topArtists.length > 0 ? topArtists : listeningStats.topArtists || [],
+                clock:       listeningStats.clockData || [],
+                calendar:    calendarRes.data || [],
+                vibe,
+                streak: streakRes.data || {
                     current_streak: 0,
-                    best_streak: 0,
-                    total_days: 0,
+                    best_streak:    0,
+                    total_days:     0,
                 },
-                bpm: audioFeatures.bpm,
-                energy: audioFeatures.energy,
-                valence: audioFeatures.valence,
+                bpm:          audioFeatures.bpm,
+                energy:       audioFeatures.energy,
+                valence:      audioFeatures.valence,
                 danceability: audioFeatures.danceability,
+                snapshotAge:  snapshot.updated_at,
             }),
-            {
-                status: 200,
-                headers: {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-            },
+            { status: 200, headers: CORS },
         );
+
     } catch (err) {
-        console.error("Error in status function:", err);
+        console.error("Status function error:", err);
         return new Response(
             JSON.stringify({ error: "Internal Server Error" }),
-            {
-                status: 500,
-                headers: {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-            },
+            { status: 500, headers: CORS },
         );
     }
 };
