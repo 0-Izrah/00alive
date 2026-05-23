@@ -1,11 +1,11 @@
 name: Sync Spotify Snapshot
 
 on:
-  schedule:
+  # schedule:
     # Runs every 3 minutes — keeps the snapshot fresh without hammering Spotify
     # GitHub Actions cron minimum is 5 minutes on free tier
     # If you need faster updates, use 5 minutes: */5 * * * *
-    - cron: '*/5 * * * *'
+    # - cron: '*/5 * * * *'
   
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
